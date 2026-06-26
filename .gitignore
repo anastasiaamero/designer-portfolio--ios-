@@ -1,0 +1,9 @@
+node_modules/
+dist/
+outputs/
+public/os-portfolio/*check*.png
+public/os-portfolio/*final.png
+.DS_Store
+.env
+.env.local
+npm-debug.log*
