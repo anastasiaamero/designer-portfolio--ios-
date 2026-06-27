@@ -3837,12 +3837,19 @@ body,
   white-space: pre-line;
 }
 
-.studio-widget-head img {
-  width: 22px;
-  height: 22px;
-  padding: 5px;
+.studio-widget-action-preview,
+.studio-action-preview {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.studio-widget-action-preview > span,
+.studio-action-preview > span {
+  display: block;
 }
 
 .studio-contact-preview {
