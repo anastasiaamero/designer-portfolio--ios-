@@ -272,36 +272,47 @@
         pointer-events: none;
       }
 
-      .expanded-menu-button {
+      .expanded-dock {
         position: fixed;
         left: 50%;
         bottom: 30px;
         z-index: 55;
-        display: grid;
-        place-items: center;
-        width: 56px;
-        height: 56px;
-        border-radius: 999px;
+        display: flex;
+        gap: 8px;
+        padding: 6px;
+        border-radius: calc(var(--radius-control) + 7px);
         transform: translateX(-50%);
-        background:
-          radial-gradient(circle at 36% 20%, rgba(255, 255, 255, 0.5), transparent 34%),
-          rgba(160, 160, 160, 0.34);
-        border: 1px solid rgba(255, 255, 255, 0.42);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54), 0 20px 48px rgba(50, 57, 86, 0.18);
+        background: rgba(248, 250, 255, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.38);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52), 0 22px 52px rgba(50, 57, 86, 0.12);
         backdrop-filter: blur(28px) saturate(1.4);
         -webkit-backdrop-filter: blur(28px) saturate(1.4);
+      }
+
+      .expanded-dock button {
+        min-width: 118px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: var(--radius-control);
+        color: var(--ink);
+        background: radial-gradient(circle at 36% 20%, rgba(255, 255, 255, 0.46), transparent 34%), var(--glass-control);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.44), 0 10px 24px rgba(50, 57, 86, 0.14);
         cursor: pointer;
+        font-size: 13px;
+        font-weight: var(--semibold);
         transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background 180ms ease;
       }
 
-      .expanded-menu-button:hover {
-        transform: translateX(-50%) translateY(-4px) scale(1.04);
-        background:
-          radial-gradient(circle at 36% 20%, rgba(255, 255, 255, 0.56), transparent 34%),
-          rgba(120, 120, 120, 0.36);
+      .expanded-dock button:hover {
+        transform: translateY(-7px) scale(1.04);
+        background: radial-gradient(circle at 36% 20%, rgba(255, 255, 255, 0.5), transparent 34%), var(--glass-control-hover);
       }
 
-      .expanded-menu-button[hidden] {
+      .expanded-dock[hidden] {
         display: none;
       }
 
@@ -1236,11 +1247,13 @@
       }
 
       @media (max-width: 620px) {
-        .dock {
+        .dock,
+        .expanded-dock {
           bottom: 18px;
         }
 
-        .dock button {
+        .dock button,
+        .expanded-dock button {
           min-width: 94px;
           height: 48px;
           font-size: 12px;
@@ -1281,9 +1294,20 @@
         <div class="expanded-content" id="expandedContent"></div>
       </section>
 
-      <button class="expanded-menu-button" id="expandedMenuButton" type="button" aria-label="Вернуться к меню" hidden>
-        <img class="ui-icon" src="assets/icons/Files.svg" alt="" />
-      </button>
+      <nav class="expanded-dock" id="expandedDock" aria-label="Разделы сайта в раскрытом режиме" hidden>
+        <button type="button" data-focus="bio">
+          <img class="ui-icon" src="assets/icons/User_Circle.svg" alt="" aria-hidden="true" />
+          <span>Обо мне</span>
+        </button>
+        <button type="button" data-focus="project-category">
+          <img class="ui-icon" src="assets/icons/Files.svg" alt="" aria-hidden="true" />
+          <span>Проекты</span>
+        </button>
+        <button type="button" data-focus="contacts">
+          <img class="ui-icon" src="assets/icons/Mail.svg" alt="" aria-hidden="true" />
+          <span>Контакты</span>
+        </button>
+      </nav>
 
       <nav class="dock" aria-label="Разделы сайта">
         <button type="button" data-focus="bio">
@@ -1310,7 +1334,7 @@
       const expandedView = document.querySelector("#expandedView");
       const expandedContent = document.querySelector("#expandedContent");
       const expandedClose = document.querySelector("#expandedClose");
-      const expandedMenuButton = document.querySelector("#expandedMenuButton");
+      const expandedDock = document.querySelector("#expandedDock");
       const moscowTime = document.querySelector("#moscowTime");
       const topSwitch = document.querySelector(".top-switch");
       const dock = document.querySelector(".dock");
@@ -1382,16 +1406,22 @@
           button.classList.toggle("active", button.dataset.lang === currentLanguage);
         });
 
-        dock.hidden = !osChrome.footer.visible;
+        dock.hidden = !osChrome.footer.visible || Boolean(expandedId);
         dock.style.color = osChrome.footer.textColor;
         dock.style.backgroundColor = `rgba(248, 250, 255, ${osChrome.footer.backgroundOpacity})`;
         dock.style.bottom = `${osChrome.footer.bottom}px`;
+        expandedDock.hidden = !expandedId || !osChrome.footer.visible;
+        expandedDock.style.color = osChrome.footer.textColor;
+        expandedDock.style.backgroundColor = `rgba(248, 250, 255, ${osChrome.footer.backgroundOpacity})`;
+        expandedDock.style.bottom = `${osChrome.footer.bottom}px`;
         const footerLabels = currentLanguage === "ru" ? osChrome.footer.labels : (osChrome.footer.labelsEn || ["About", "Projects", "Contacts"]);
-        dock.querySelectorAll("button span").forEach((label, index) => {
-          label.textContent = footerLabels[index] || label.textContent;
-        });
-        dock.querySelectorAll("button img").forEach((image, index) => {
-          image.src = iconAssetPath(osChrome.footer.icons?.[index] || image.getAttribute("src"));
+        [dock, expandedDock].forEach((menu) => {
+          menu.querySelectorAll("button span").forEach((label, index) => {
+            label.textContent = footerLabels[index] || label.textContent;
+          });
+          menu.querySelectorAll("button img").forEach((image, index) => {
+            image.src = iconAssetPath(osChrome.footer.icons?.[index] || image.getAttribute("src"));
+          });
         });
 
         document.body.classList.toggle("motion-static", !osChrome.motion.hoverLift);
@@ -2159,19 +2189,20 @@
           node.hidden = true;
         });
         dock.hidden = true;
-        expandedMenuButton.hidden = false;
+        expandedDock.hidden = !osChrome.footer.visible;
+        applyChrome();
       }
 
       function closeExpanded() {
         expandedId = null;
         document.querySelector(".screen").classList.remove("is-expanded");
         expandedView.hidden = true;
-        expandedMenuButton.hidden = true;
+        expandedDock.hidden = true;
         searchPanel.hidden = true;
         desktop.querySelectorAll(".widget").forEach((node) => {
           node.hidden = false;
         });
-        dock.hidden = !osChrome.footer.visible;
+        applyChrome();
       }
 
       function renderSearchResults(query = "") {
@@ -2245,7 +2276,6 @@
       });
 
       expandedClose.addEventListener("click", closeExpanded);
-      expandedMenuButton.addEventListener("click", closeExpanded);
       expandedView.addEventListener("click", (event) => {
         if (event.target === expandedView) closeExpanded();
       });
