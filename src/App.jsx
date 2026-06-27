@@ -1142,6 +1142,31 @@ function WidgetStudio({ onExit }) {
     setNotice("Есть несохранённые изменения");
   };
 
+  const updateTextLayerText = (widgetId, layerId, text) => {
+    remember();
+    setWidgets((current) =>
+      current.map((widget) => {
+        if (widget.id !== widgetId) return widget;
+        const source = (widget.textBlocks || []).find((block) => block.id === layerId);
+        return {
+          ...widget,
+          title: source?.role === "title" ? text : widget.title,
+          text: source?.role === "body" ? text : widget.text,
+          textBlocks: (widget.textBlocks || []).map((block) =>
+            block.id === layerId ? { ...block, text } : block,
+          ),
+        };
+      }),
+    );
+    setNotice("Текст обновлён");
+  };
+
+  const readEditableText = (element) => {
+    const clone = element.cloneNode(true);
+    clone.querySelectorAll(".studio-resize-handle").forEach((node) => node.remove());
+    return clone.textContent || "";
+  };
+
   const selectLayer = (widget, type = "widget", id = widget.id, append = false) => {
     const item = { type, widgetId: widget.id, id };
     setActiveId(widget.id);
@@ -1599,61 +1624,74 @@ function WidgetStudio({ onExit }) {
           <p>Portfolio OS</p>
           <h1>Личный кабинет</h1>
         </div>
-        <div className="studio-nav-group" aria-label="Области сайта">
-          <p>Области сайта</p>
-          <button className={activePanel === "widgets" ? "active" : ""} type="button" onClick={() => setActivePanel("widgets")}>Виджеты</button>
-          <button className={activePanel === "header" ? "active" : ""} type="button" onClick={() => setActivePanel("header")}>Хедер</button>
-          <button className={activePanel === "footer" ? "active" : ""} type="button" onClick={() => setActivePanel("footer")}>Футер</button>
-        </div>
-        <div className="studio-actions">
-          <p>Добавить виджет</p>
-          <button type="button" onClick={() => addWidget("bio")}>Резюме</button>
-          <button type="button" onClick={() => addWidget("project-category")}>Проект</button>
-          <button type="button" onClick={() => addWidget("contacts")}>Контакты</button>
-        </div>
-        <div className="studio-actions studio-actions--tools">
-          <p>Align</p>
-          <button type="button" onClick={() => alignSelected("left")}>Left</button>
-          <button type="button" onClick={() => alignSelected("center")}>Center</button>
-          <button type="button" onClick={() => alignSelected("right")}>Right</button>
-          <button type="button" onClick={() => alignSelected("top")}>Top</button>
-          <button type="button" onClick={() => alignSelected("middle")}>Middle</button>
-          <button type="button" onClick={() => alignSelected("bottom")}>Bottom</button>
-        </div>
-        <div className="studio-actions studio-actions--tools">
-          <p>Автолейаут</p>
-          <label className="studio-mini-field">
-            <span>Gap</span>
-            <input type="number" min="0" max="120" value={spacingGap} onChange={(event) => setSpacingGap(Number(event.target.value))} />
-          </label>
-          <button type="button" onClick={() => applySelectionGap("horizontal")}>Разложить X</button>
-          <button type="button" onClick={() => applySelectionGap("vertical")}>Разложить Y</button>
-          <span className="studio-selection-note">{selectedItems.length} выбрано</span>
-        </div>
-        <div className="studio-actions studio-actions--tools">
-          <p>Направляющие</p>
-          <button type="button" onClick={() => addGuide("vertical")}>+ Vertical</button>
-          <button type="button" onClick={() => addGuide("horizontal")}>+ Horizontal</button>
-          <button type="button" onClick={() => updateGuides({ vertical: [], horizontal: [] })}>Clear</button>
-        </div>
-        <div className="studio-list">
-          {widgets.map((widget, index) => (
-            <button
-              className={widget.id === activeWidget?.id ? "active" : ""}
-              key={widget.id}
-              type="button"
-              onClick={() => {
-                setActivePanel("widgets");
-                setActiveId(widget.id);
-                setSelectedLayer({ type: "widget", id: widget.id });
-                setSelectedItems([{ type: "widget", widgetId: widget.id, id: widget.id }]);
-              }}
-            >
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              {widget.title.replaceAll("\n", " ")}
-            </button>
-          ))}
-        </div>
+        <details className="studio-left-accordion">
+          <summary>Области сайта</summary>
+          <div className="studio-nav-group" aria-label="Области сайта">
+            <button className={activePanel === "widgets" ? "active" : ""} type="button" onClick={() => setActivePanel("widgets")}>Виджеты</button>
+            <button className={activePanel === "header" ? "active" : ""} type="button" onClick={() => setActivePanel("header")}>Хедер</button>
+            <button className={activePanel === "footer" ? "active" : ""} type="button" onClick={() => setActivePanel("footer")}>Футер</button>
+          </div>
+        </details>
+        <details className="studio-left-accordion">
+          <summary>Добавить виджет</summary>
+          <div className="studio-actions">
+            <button type="button" onClick={() => addWidget("bio")}>Резюме</button>
+            <button type="button" onClick={() => addWidget("project-category")}>Проект</button>
+            <button type="button" onClick={() => addWidget("contacts")}>Контакты</button>
+          </div>
+        </details>
+        <details className="studio-left-accordion">
+          <summary>Align</summary>
+          <div className="studio-actions studio-actions--tools">
+            <button type="button" onClick={() => alignSelected("left")}>Left</button>
+            <button type="button" onClick={() => alignSelected("center")}>Center</button>
+            <button type="button" onClick={() => alignSelected("right")}>Right</button>
+            <button type="button" onClick={() => alignSelected("top")}>Top</button>
+            <button type="button" onClick={() => alignSelected("middle")}>Middle</button>
+            <button type="button" onClick={() => alignSelected("bottom")}>Bottom</button>
+          </div>
+        </details>
+        <details className="studio-left-accordion">
+          <summary>Автолейаут</summary>
+          <div className="studio-actions studio-actions--tools">
+            <label className="studio-mini-field">
+              <span>Gap</span>
+              <input type="number" min="0" max="120" value={spacingGap} onChange={(event) => setSpacingGap(Number(event.target.value))} />
+            </label>
+            <button type="button" onClick={() => applySelectionGap("horizontal")}>Разложить X</button>
+            <button type="button" onClick={() => applySelectionGap("vertical")}>Разложить Y</button>
+            <span className="studio-selection-note">{selectedItems.length} выбрано</span>
+          </div>
+        </details>
+        <details className="studio-left-accordion">
+          <summary>Направляющие</summary>
+          <div className="studio-actions studio-actions--tools">
+            <button type="button" onClick={() => addGuide("vertical")}>+ Vertical</button>
+            <button type="button" onClick={() => addGuide("horizontal")}>+ Horizontal</button>
+            <button type="button" onClick={() => updateGuides({ vertical: [], horizontal: [] })}>Clear</button>
+          </div>
+        </details>
+        <details className="studio-left-accordion">
+          <summary>Список виджетов</summary>
+          <div className="studio-list">
+            {widgets.map((widget, index) => (
+              <button
+                className={widget.id === activeWidget?.id ? "active" : ""}
+                key={widget.id}
+                type="button"
+                onClick={() => {
+                  setActivePanel("widgets");
+                  setActiveId(widget.id);
+                  setSelectedLayer({ type: "widget", id: widget.id });
+                  setSelectedItems([{ type: "widget", widgetId: widget.id, id: widget.id }]);
+                }}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                {widget.title.replaceAll("\n", " ")}
+              </button>
+            ))}
+          </div>
+        </details>
         <div className="studio-bottom">
           <button type="button" onClick={saveWidgets}>Сохранить</button>
           <button type="button" onClick={onExit}>Открыть сайт</button>
@@ -1773,7 +1811,9 @@ function WidgetStudio({ onExit }) {
                 {(widget.textBlocks || []).map((block) => (
                   <span
                     className={`studio-text-layer studio-text-layer--${block.role || "body"} ${selectedLayer.type === "text" && selectedLayer.id === block.id ? "selected" : ""} ${isSelected("text", widget.id, block.id) ? "selected-group" : ""}`}
+                    contentEditable
                     key={block.id}
+                    suppressContentEditableWarning
                     style={{
                       left: block.x,
                       top: block.y,
@@ -1783,10 +1823,15 @@ function WidgetStudio({ onExit }) {
                       fontWeight: block.weight,
                       color: block.color || widget.textColor || "#232428",
                     }}
-                    onPointerDown={(event) => startLayerDrag(event, widget, "text", block)}
+                    onBlur={(event) => updateTextLayerText(widget.id, block.id, readEditableText(event.currentTarget))}
+                    onInput={() => setNotice("Текст редактируется прямо на макете")}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      selectLayer(widget, "text", block.id, event.shiftKey);
+                    }}
                   >
                     {block.text}
-                    <span className="studio-resize-handle" onPointerDown={(event) => startResize(event, widget, "text", block)}>↘</span>
+                    <span className="studio-resize-handle" contentEditable={false} onPointerDown={(event) => startResize(event, widget, "text", block)}>↘</span>
                   </span>
                 ))}
                 {(widget.icons || []).map((icon) => (
@@ -1933,7 +1978,7 @@ function ChromeControls({ chrome, section, updateChrome }) {
         <h2>{isHeader ? "Верхняя панель" : "Нижнее меню"}</h2>
       </div>
 
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Видимость</summary>
         <label className="studio-switch-row">
           <input
@@ -1965,7 +2010,7 @@ function ChromeControls({ chrome, section, updateChrome }) {
         )}
       </details>
 
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>{isHeader ? "Текст и поиск" : "Кнопки меню"}</summary>
         {isHeader ? (
           <>
@@ -2369,7 +2414,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         <p>Выбранный виджет</p>
         <h2>{widget.title.replaceAll("\n", " ")}</h2>
       </div>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Виджет</summary>
       <label className="studio-field">
         <span>Тип</span>
@@ -2400,7 +2445,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         </select>
       </label>
       </details>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Кнопка раскрытия</summary>
         <div className="studio-section-head">
           <div>
@@ -2442,7 +2487,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           </label>
         </div>
       </details>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Текст</summary>
         <div className="studio-section-head">
           <div>
@@ -2460,10 +2505,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         </div>
         {activeText ? (
           <>
-            <label className="studio-field">
-              <span>Содержимое слоя</span>
-              <textarea value={activeText.text || ""} onChange={(event) => updateTextBlock(activeText.id, { text: event.target.value })} />
-            </label>
+            <p className="studio-empty-note">Текст редактируется прямо на макете: нажми на слой и печатай внутри него.</p>
             <div className="studio-grid-fields">
               {textNumber("x", "Text X", 0, widget.w)}
               {textNumber("y", "Text Y", 0, widget.h)}
@@ -2497,7 +2539,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           <p className="studio-empty-note">Добавь текстовый слой, чтобы управлять текстом отдельно.</p>
         )}
       </details>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Фон и цвет</summary>
       <label className="studio-field">
         <span>Оттенок плашки</span>
@@ -2531,7 +2573,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         </>
       )}
       </details>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Иконки</summary>
         <div className="studio-section-head">
           <div>
@@ -2587,7 +2629,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           <p className="studio-empty-note">Добавь SVG-иконку или выбери существующую.</p>
         )}
       </details>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Фреймы</summary>
         <div className="studio-section-head">
           <div>
@@ -2652,7 +2694,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           <p className="studio-empty-note">Добавь фрейм, чтобы вставить картинку внутрь виджета и обрезать её по форме.</p>
         )}
       </details>
-      <details open className="studio-frame-tools studio-accordion">
+      <details className="studio-frame-tools studio-accordion">
         <summary>Большой виджет</summary>
         <div className="studio-section-head">
           <div>
@@ -2687,7 +2729,10 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           </label>
         </div>
         {expandedBlocks.map((block, index) => (
-          <div className="studio-block-editor" key={block.id}>
+          <details className="studio-block-editor" key={block.id}>
+            <summary>
+              Блок {index + 1}: {block.title || block.label || (block.type === "image" ? "Картинка" : "Текст")}
+            </summary>
             <div className="studio-section-head">
               <p>Блок {index + 1}</p>
               <button type="button" onClick={() => removeExpandedBlock(block.id)}>Удалить</button>
@@ -2803,7 +2848,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
                 </div>
               </>
             )}
-          </div>
+          </details>
         ))}
       </details>
     </div>
