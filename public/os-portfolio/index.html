@@ -930,22 +930,22 @@
       .project-arrow {
         display: inline-grid;
         place-items: center;
-        width: var(--action-plate-size, 22px);
-        height: var(--action-plate-size, 22px);
+        width: var(--action-plate-size, 40px);
+        height: var(--action-plate-size, 40px);
         border-radius: 50%;
         color: var(--action-icon-color, rgba(35, 36, 40, 0.66));
         background: color-mix(in srgb, var(--action-plate-color, #ffffff) 36%, transparent);
       }
 
       .project-arrow .ui-icon {
-        width: var(--action-icon-size, 15px);
-        height: var(--action-icon-size, 15px);
+        width: var(--action-icon-size, 28px);
+        height: var(--action-icon-size, 28px);
       }
 
       .action-mask {
         display: block;
-        width: var(--action-icon-size, 15px);
-        height: var(--action-icon-size, 15px);
+        width: var(--action-icon-size, 28px);
+        height: var(--action-icon-size, 28px);
         background: var(--action-icon-color, #24262b);
         opacity: 0.82;
         -webkit-mask: var(--action-icon-url) center / contain no-repeat;
@@ -1361,6 +1361,7 @@
             locationEn: "Moscow",
             textColor: "#24262b",
             fontSize: 23,
+            fontWeight: 420,
             showLanguage: true,
             showSearch: true,
             searchPlaceholder: "Найти проект или раздел",
@@ -1372,6 +1373,8 @@
             labelsEn: ["About", "Projects", "Contacts"],
             icons: ["assets/icons/User_Circle.svg", "assets/icons/Files.svg", "assets/icons/Mail.svg"],
             textColor: "#24262b",
+            fontSize: 13,
+            fontWeight: 720,
             backgroundOpacity: 0.46,
             bottom: 30
           },
@@ -1402,6 +1405,7 @@
         searchInput.placeholder = currentLanguage === "ru" ? osChrome.header.searchPlaceholder : (osChrome.header.searchPlaceholderEn || "Find a project or section");
         moscowTime.style.color = osChrome.header.textColor;
         moscowTime.style.fontSize = `${osChrome.header.fontSize}px`;
+        moscowTime.style.fontWeight = osChrome.header.fontWeight || 420;
         topSwitch.querySelectorAll("[data-lang]").forEach((button) => {
           button.classList.toggle("active", button.dataset.lang === currentLanguage);
         });
@@ -1418,6 +1422,10 @@
         [dock, expandedDock].forEach((menu) => {
           menu.querySelectorAll("button span").forEach((label, index) => {
             label.textContent = footerLabels[index] || label.textContent;
+          });
+          menu.querySelectorAll("button").forEach((button) => {
+            button.style.fontSize = `${osChrome.footer.fontSize || 13}px`;
+            button.style.fontWeight = osChrome.footer.fontWeight || 720;
           });
           menu.querySelectorAll("button img").forEach((image, index) => {
             image.src = iconAssetPath(osChrome.footer.icons?.[index] || image.getAttribute("src"));
@@ -1884,8 +1892,8 @@
           imageX: 50,
           imageY: 50,
           imageScrim: 0.18,
-          actionPlateSize: 22,
-          actionIconSize: 15,
+          actionPlateSize: 40,
+          actionIconSize: 28,
           actionPlateColor: "#ffffff",
           actionIconColor: "#24262b",
           ...widget
@@ -1908,6 +1916,8 @@
           iconColor: icon.iconColor || icon.color || "#ffffff",
           ...icon
         }));
+        normalized.actionPlateSize = Math.max(normalized.actionPlateSize || 40, 36);
+        normalized.actionIconSize = Math.max(normalized.actionIconSize || 28, 22);
         return normalized;
       }
 
@@ -1982,7 +1992,7 @@
         const textMarkup = textBlocksHtml(widget);
         const iconMarkup = iconsHtml(widget);
         const hasFrames = (widget.frames || []).length > 0;
-        const actionStyle = `--action-plate-size:${widget.actionPlateSize || 22}px; --action-icon-size:${widget.actionIconSize || 15}px; --action-plate-color:${widget.actionPlateColor || "#ffffff"}; --action-icon-color:${widget.actionIconColor || "#24262b"};`;
+        const actionStyle = `--action-plate-size:${widget.actionPlateSize || 40}px; --action-icon-size:${widget.actionIconSize || 28}px; --action-plate-color:${widget.actionPlateColor || "#ffffff"}; --action-icon-color:${widget.actionIconColor || "#24262b"};`;
         if (widget.type === "bio") {
           return `
             ${frameMarkup}
