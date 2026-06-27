@@ -987,6 +987,8 @@ function WidgetStudio({ onExit }) {
   const [activeId, setActiveId] = useState(() => widgets[0]?.id || null);
   const [activePanel, setActivePanel] = useState("widgets");
   const [selectedLayer, setSelectedLayer] = useState(() => ({ type: "widget", id: widgets[0]?.id || null }));
+  const [selectedItems, setSelectedItems] = useState(() => widgets[0] ? [{ type: "widget", widgetId: widgets[0].id, id: widgets[0].id }] : []);
+  const [spacingGap, setSpacingGap] = useState(20);
   const [cropFrameId, setCropFrameId] = useState(null);
   const [notice, setNotice] = useState("Изменения сохраняются локально после кнопки «Сохранить»");
   const [moscowPreviewTime, setMoscowPreviewTime] = useState("09:00");
@@ -1002,9 +1004,49 @@ function WidgetStudio({ onExit }) {
     }
   });
   const dragState = useRef(null);
+  const historyRef = useRef([]);
   const canvasViewportRef = useRef(null);
   const [stageScale, setStageScale] = useState(1);
   const activeWidget = widgets.find((widget) => widget.id === activeId) || widgets[0];
+
+  const selectionKey = (item) => `${item.type}:${item.widgetId}:${item.id}`;
+
+  const snapshot = () => ({
+    widgets: JSON.parse(JSON.stringify(widgets)),
+    chrome: JSON.parse(JSON.stringify(chrome)),
+  });
+
+  const remember = () => {
+    historyRef.current = [...historyRef.current.slice(-29), snapshot()];
+  };
+
+  const undoLast = () => {
+    const previous = historyRef.current.pop();
+    if (!previous) {
+      setNotice("Пока нечего отменять");
+      return;
+    }
+    setWidgets(previous.widgets);
+    setChrome(previous.chrome);
+    setSelectedItems([]);
+    setSelectedLayer({ type: "widget", id: previous.widgets[0]?.id || null });
+    setActiveId(previous.widgets[0]?.id || null);
+    setNotice("Последнее действие отменено");
+  };
+
+  const isSelected = (type, widgetId, id) =>
+    selectedItems.some((item) => item.type === type && item.widgetId === widgetId && item.id === id);
+
+  const getSelectedTargets = () => selectedItems
+    .map((item) => {
+      const widget = widgets.find((candidate) => candidate.id === item.widgetId);
+      if (!widget) return null;
+      if (item.type === "widget") return { item, widget, target: widget };
+      const field = item.type === "text" ? "textBlocks" : item.type === "frame" ? "frames" : "icons";
+      const target = (widget[field] || []).find((layer) => layer.id === item.id);
+      return target ? { item, widget, target } : null;
+    })
+    .filter(Boolean);
 
   useEffect(() => {
     if (!canvasViewportRef.current) return;
@@ -1037,6 +1079,7 @@ function WidgetStudio({ onExit }) {
   }, []);
 
   const updateWidget = (id, patch) => {
+    if (!dragState.current) remember();
     setWidgets((current) =>
       current.map((widget) => (widget.id === id ? { ...widget, ...patch } : widget)),
     );
@@ -1078,6 +1121,7 @@ function WidgetStudio({ onExit }) {
   };
 
   const updateLayer = (widgetId, layerType, layerId, patch) => {
+    if (!dragState.current) remember();
     const field = layerType === "text" ? "textBlocks" : layerType === "frame" ? "frames" : "icons";
     setWidgets((current) =>
       current.map((widget) =>
@@ -1094,10 +1138,20 @@ function WidgetStudio({ onExit }) {
     setNotice("Есть несохранённые изменения");
   };
 
-  const selectLayer = (widget, type = "widget", id = widget.id) => {
+  const selectLayer = (widget, type = "widget", id = widget.id, append = false) => {
+    const item = { type, widgetId: widget.id, id };
     setActiveId(widget.id);
     setActivePanel("widgets");
     setSelectedLayer({ type, id });
+    setSelectedItems((current) => {
+      if (!append) return [item];
+      const key = selectionKey(item);
+      const exists = current.some((candidate) => selectionKey(candidate) === key);
+      const next = exists
+        ? current.filter((candidate) => selectionKey(candidate) !== key)
+        : [...current, item];
+      return next.length ? next : [item];
+    });
     if (type !== "frame") setCropFrameId(null);
   };
 
@@ -1109,6 +1163,7 @@ function WidgetStudio({ onExit }) {
   };
 
   const updateChrome = (section, patch) => {
+    remember();
     setChrome((current) => ({
       ...current,
       [section]: { ...current[section], ...patch },
@@ -1117,6 +1172,7 @@ function WidgetStudio({ onExit }) {
   };
 
   const addWidget = (type = "project-category") => {
+    remember();
     const base = {
       id: crypto.randomUUID(),
       type,
@@ -1142,20 +1198,25 @@ function WidgetStudio({ onExit }) {
     const normalized = normalizeOsWidget(base);
     setWidgets((current) => [...current, normalized]);
     setActiveId(normalized.id);
+    setSelectedItems([{ type: "widget", widgetId: normalized.id, id: normalized.id }]);
+    setSelectedLayer({ type: "widget", id: normalized.id });
     setNotice("Виджет добавлен");
   };
 
   const removeWidget = (id) => {
+    remember();
     setWidgets((current) => current.filter((widget) => widget.id !== id));
     setActiveId((current) => {
       if (current !== id) return current;
       return widgets.find((widget) => widget.id !== id)?.id || null;
     });
+    setSelectedItems((current) => current.filter((item) => item.widgetId !== id));
     setNotice("Виджет удалён");
   };
 
   const duplicateWidget = () => {
     if (!activeWidget) return;
+    remember();
     const copy = {
       ...activeWidget,
       id: crypto.randomUUID(),
@@ -1165,16 +1226,27 @@ function WidgetStudio({ onExit }) {
     };
     setWidgets((current) => [...current, copy]);
     setActiveId(copy.id);
+    setSelectedItems([{ type: "widget", widgetId: copy.id, id: copy.id }]);
+    setSelectedLayer({ type: "widget", id: copy.id });
     setNotice("Виджет продублирован");
   };
 
   const startDrag = (event, widget) => {
     event.preventDefault();
-    selectLayer(widget);
+    selectLayer(widget, "widget", widget.id, event.shiftKey);
     setCropFrameId(null);
+    remember();
+    const selectedTargets = isSelected("widget", widget.id, widget.id)
+      ? getSelectedTargets().filter(({ item }) => item.type === "widget")
+      : [{ item: { type: "widget", widgetId: widget.id, id: widget.id }, widget, target: widget }];
     dragState.current = {
       kind: "widget",
       id: widget.id,
+      selectedTargets: selectedTargets.map(({ item, target }) => ({
+        ...item,
+        x: target.x || 0,
+        y: target.y || 0,
+      })),
       startX: event.clientX,
       startY: event.clientY,
       x: widget.x,
@@ -1187,12 +1259,21 @@ function WidgetStudio({ onExit }) {
   const startLayerDrag = (event, widget, layerType, layer) => {
     event.preventDefault();
     event.stopPropagation();
-    selectLayer(widget, layerType, layer.id);
+    selectLayer(widget, layerType, layer.id, event.shiftKey);
+    remember();
+    const selectedTargets = isSelected(layerType, widget.id, layer.id)
+      ? getSelectedTargets().filter(({ item }) => item.type !== "widget")
+      : [{ item: { type: layerType, widgetId: widget.id, id: layer.id }, widget, target: layer }];
     dragState.current = {
       kind: "layer",
       widgetId: widget.id,
       layerType,
       layerId: layer.id,
+      selectedTargets: selectedTargets.map(({ item, target }) => ({
+        ...item,
+        x: target.x || 0,
+        y: target.y || 0,
+      })),
       startX: event.clientX,
       startY: event.clientY,
       x: layer.x || 0,
@@ -1206,6 +1287,7 @@ function WidgetStudio({ onExit }) {
     event.preventDefault();
     event.stopPropagation();
     selectLayer(widget, layerType, layer.id);
+    remember();
     dragState.current = {
       kind: "resize",
       widgetId: widget.id,
@@ -1225,6 +1307,7 @@ function WidgetStudio({ onExit }) {
     event.preventDefault();
     event.stopPropagation();
     selectLayer(widget, "frame", frame.id);
+    remember();
     dragState.current = {
       kind: "frameImage",
       widgetId: widget.id,
@@ -1275,16 +1358,41 @@ function WidgetStudio({ onExit }) {
     }
     const widget = widgets.find((item) => item.id === drag.id);
     if (drag.kind === "layer") {
-      const widgetForLayer = widgets.find((item) => item.id === drag.widgetId);
-      if (!widgetForLayer) return;
-      const layer = (drag.layerType === "text" ? widgetForLayer.textBlocks : drag.layerType === "frame" ? widgetForLayer.frames : widgetForLayer.icons)
-        ?.find((item) => item.id === drag.layerId);
-      const maxX = Math.max(0, widgetForLayer.w - (layer?.w || layer?.plateSize || 20));
-      const maxY = Math.max(0, widgetForLayer.h - (layer?.h || layer?.plateSize || 20));
-      updateLayer(drag.widgetId, drag.layerType, drag.layerId, {
-        x: Math.round(Math.min(Math.max(drag.x + (event.clientX - drag.startX) / drag.scale, 0), maxX)),
-        y: Math.round(Math.min(Math.max(drag.y + (event.clientY - drag.startY) / drag.scale, 0), maxY)),
-      });
+      const dx = (event.clientX - drag.startX) / drag.scale;
+      const dy = (event.clientY - drag.startY) / drag.scale;
+      const moving = drag.selectedTargets?.length ? drag.selectedTargets : [{
+        type: drag.layerType,
+        widgetId: drag.widgetId,
+        id: drag.layerId,
+        x: drag.x,
+        y: drag.y,
+      }];
+      setWidgets((current) => current.map((widgetItem) => {
+        const layersForWidget = moving.filter((item) => item.widgetId === widgetItem.id);
+        if (!layersForWidget.length) return widgetItem;
+        let nextWidget = widgetItem;
+        ["text", "frame", "icon"].forEach((type) => {
+          const field = type === "text" ? "textBlocks" : type === "frame" ? "frames" : "icons";
+          const layers = layersForWidget.filter((item) => item.type === type);
+          if (!layers.length) return;
+          nextWidget = {
+            ...nextWidget,
+            [field]: (nextWidget[field] || []).map((layer) => {
+              const source = layers.find((item) => item.id === layer.id);
+              if (!source) return layer;
+              const maxX = Math.max(0, nextWidget.w - (layer.w || layer.plateSize || 20));
+              const maxY = Math.max(0, nextWidget.h - (layer.h || layer.plateSize || 20));
+              return {
+                ...layer,
+                x: Math.round(Math.min(Math.max(source.x + dx, 0), maxX)),
+                y: Math.round(Math.min(Math.max(source.y + dy, 0), maxY)),
+              };
+            }),
+          };
+        });
+        return nextWidget;
+      }));
+      setNotice("Есть несохранённые изменения");
       return;
     }
     if (drag.kind === "resize") {
@@ -1318,16 +1426,158 @@ function WidgetStudio({ onExit }) {
       return;
     }
     if (!widget) return;
-    const maxX = Math.max(0, 1180 - (widget.w || 0));
-    const maxY = Math.max(0, 820 - (widget.h || 0));
-    const x = Math.round(Math.min(Math.max(drag.x + (event.clientX - drag.startX) / drag.scale, 0), maxX));
-    const y = Math.round(Math.min(Math.max(drag.y + (event.clientY - drag.startY) / drag.scale, 0), maxY));
-    updateWidget(drag.id, { x, y });
+    const dx = (event.clientX - drag.startX) / drag.scale;
+    const dy = (event.clientY - drag.startY) / drag.scale;
+    const moving = drag.selectedTargets?.length ? drag.selectedTargets : [{
+      type: "widget",
+      widgetId: drag.id,
+      id: drag.id,
+      x: drag.x,
+      y: drag.y,
+    }];
+    setWidgets((current) => current.map((item) => {
+      const source = moving.find((selected) => selected.id === item.id);
+      if (!source) return item;
+      const maxX = Math.max(0, 1180 - (item.w || 0));
+      const maxY = Math.max(0, 820 - (item.h || 0));
+      return {
+        ...item,
+        x: Math.round(Math.min(Math.max(source.x + dx, 0), maxX)),
+        y: Math.round(Math.min(Math.max(source.y + dy, 0), maxY)),
+      };
+    }));
+    setNotice("Есть несохранённые изменения");
   };
 
   const stopDrag = () => {
     dragState.current = null;
   };
+
+  const moveSelectedBy = (dx, dy) => {
+    const targets = getSelectedTargets();
+    if (!targets.length) return;
+    remember();
+    setWidgets((current) => current.map((widgetItem) => {
+      const widgetTarget = targets.find(({ item }) => item.type === "widget" && item.id === widgetItem.id);
+      let nextWidget = widgetTarget
+        ? {
+            ...widgetItem,
+            x: Math.round(Math.min(Math.max((widgetItem.x || 0) + dx, 0), Math.max(0, 1180 - widgetItem.w))),
+            y: Math.round(Math.min(Math.max((widgetItem.y || 0) + dy, 0), Math.max(0, 820 - widgetItem.h))),
+          }
+        : widgetItem;
+      ["text", "frame", "icon"].forEach((type) => {
+        const field = type === "text" ? "textBlocks" : type === "frame" ? "frames" : "icons";
+        const selectedForField = targets.filter(({ item }) => item.widgetId === widgetItem.id && item.type === type);
+        if (!selectedForField.length) return;
+        nextWidget = {
+          ...nextWidget,
+          [field]: (nextWidget[field] || []).map((layer) => {
+            const selectedTarget = selectedForField.find(({ item }) => item.id === layer.id);
+            if (!selectedTarget) return layer;
+            const maxX = Math.max(0, nextWidget.w - (layer.w || layer.plateSize || 20));
+            const maxY = Math.max(0, nextWidget.h - (layer.h || layer.plateSize || 20));
+            return {
+              ...layer,
+              x: Math.round(Math.min(Math.max((layer.x || 0) + dx, 0), maxX)),
+              y: Math.round(Math.min(Math.max((layer.y || 0) + dy, 0), maxY)),
+            };
+          }),
+        };
+      });
+      return nextWidget;
+    }));
+    setNotice(`Сдвинуто: ${targets.length} объект(а)`);
+  };
+
+  const applySelectionGap = (axis = "horizontal") => {
+    const targets = getSelectedTargets()
+      .filter(({ item }) => item.type === "widget")
+      .sort((a, b) => axis === "horizontal" ? a.target.x - b.target.x : a.target.y - b.target.y);
+    if (targets.length < 2) {
+      setNotice("Выбери минимум два виджета через Shift-клик");
+      return;
+    }
+    remember();
+    const positions = new Map();
+    let cursor = axis === "horizontal" ? targets[0].target.x : targets[0].target.y;
+    targets.forEach(({ target }, index) => {
+      if (index > 0) {
+        const previous = targets[index - 1].target;
+        cursor += (axis === "horizontal" ? previous.w : previous.h) + Number(spacingGap || 0);
+      }
+      positions.set(target.id, Math.round(cursor));
+    });
+    setWidgets((current) => current.map((widgetItem) => {
+      if (!positions.has(widgetItem.id)) return widgetItem;
+      return axis === "horizontal"
+        ? { ...widgetItem, x: positions.get(widgetItem.id) }
+        : { ...widgetItem, y: positions.get(widgetItem.id) };
+    }));
+    setNotice(`Расстояние между виджетами: ${spacingGap}px`);
+  };
+
+  const alignSelected = (mode) => {
+    const targets = getSelectedTargets();
+    if (targets.length < 2) {
+      alignActiveWidget(mode);
+      return;
+    }
+    const widgetTargets = targets.filter(({ item }) => item.type === "widget");
+    if (widgetTargets.length < 2) {
+      setNotice("Групповое выравнивание сейчас работает для виджетов");
+      return;
+    }
+    remember();
+    const left = Math.min(...widgetTargets.map(({ target }) => target.x));
+    const right = Math.max(...widgetTargets.map(({ target }) => target.x + target.w));
+    const top = Math.min(...widgetTargets.map(({ target }) => target.y));
+    const bottom = Math.max(...widgetTargets.map(({ target }) => target.y + target.h));
+    const center = Math.round((left + right) / 2);
+    const middle = Math.round((top + bottom) / 2);
+    setWidgets((current) => current.map((widgetItem) => {
+      if (!widgetTargets.some(({ target }) => target.id === widgetItem.id)) return widgetItem;
+      if (mode === "left") return { ...widgetItem, x: left };
+      if (mode === "right") return { ...widgetItem, x: right - widgetItem.w };
+      if (mode === "center") return { ...widgetItem, x: center - Math.round(widgetItem.w / 2) };
+      if (mode === "top") return { ...widgetItem, y: top };
+      if (mode === "bottom") return { ...widgetItem, y: bottom - widgetItem.h };
+      if (mode === "middle") return { ...widgetItem, y: middle - Math.round(widgetItem.h / 2) };
+      return widgetItem;
+    }));
+    setNotice(`Выровнено: ${widgetTargets.length} виджета`);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const tag = event.target?.tagName;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoLast();
+        return;
+      }
+      const step = event.shiftKey ? 10 : 1;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        moveSelectedBy(-step, 0);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        moveSelectedBy(step, 0);
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveSelectedBy(0, -step);
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveSelectedBy(0, step);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [widgets, chrome, selectedItems, spacingGap]);
 
   const handleImage = (file) => {
     if (!file || !activeWidget) return;
@@ -1359,12 +1609,22 @@ function WidgetStudio({ onExit }) {
         </div>
         <div className="studio-actions studio-actions--tools">
           <p>Align</p>
-          <button type="button" onClick={() => alignActiveWidget("left")}>Left</button>
-          <button type="button" onClick={() => alignActiveWidget("center")}>Center</button>
-          <button type="button" onClick={() => alignActiveWidget("right")}>Right</button>
-          <button type="button" onClick={() => alignActiveWidget("top")}>Top</button>
-          <button type="button" onClick={() => alignActiveWidget("middle")}>Middle</button>
-          <button type="button" onClick={() => alignActiveWidget("bottom")}>Bottom</button>
+          <button type="button" onClick={() => alignSelected("left")}>Left</button>
+          <button type="button" onClick={() => alignSelected("center")}>Center</button>
+          <button type="button" onClick={() => alignSelected("right")}>Right</button>
+          <button type="button" onClick={() => alignSelected("top")}>Top</button>
+          <button type="button" onClick={() => alignSelected("middle")}>Middle</button>
+          <button type="button" onClick={() => alignSelected("bottom")}>Bottom</button>
+        </div>
+        <div className="studio-actions studio-actions--tools">
+          <p>Автолейаут</p>
+          <label className="studio-mini-field">
+            <span>Gap</span>
+            <input type="number" min="0" max="120" value={spacingGap} onChange={(event) => setSpacingGap(Number(event.target.value))} />
+          </label>
+          <button type="button" onClick={() => applySelectionGap("horizontal")}>Разложить X</button>
+          <button type="button" onClick={() => applySelectionGap("vertical")}>Разложить Y</button>
+          <span className="studio-selection-note">{selectedItems.length} выбрано</span>
         </div>
         <div className="studio-actions studio-actions--tools">
           <p>Направляющие</p>
@@ -1381,6 +1641,8 @@ function WidgetStudio({ onExit }) {
               onClick={() => {
                 setActivePanel("widgets");
                 setActiveId(widget.id);
+                setSelectedLayer({ type: "widget", id: widget.id });
+                setSelectedItems([{ type: "widget", widgetId: widget.id, id: widget.id }]);
               }}
             >
               <span>{String(index + 1).padStart(2, "0")}</span>
@@ -1398,6 +1660,7 @@ function WidgetStudio({ onExit }) {
         <header className="studio-topline">
           <p>{notice}</p>
           <div>
+            <button type="button" onClick={undoLast}>Отменить</button>
             <button type="button" onClick={saveWidgets}>Сохранить</button>
             <button type="button" onClick={duplicateWidget}>Дублировать</button>
             <button type="button" onClick={() => activeWidget && removeWidget(activeWidget.id)}>Удалить</button>
@@ -1459,7 +1722,7 @@ function WidgetStudio({ onExit }) {
             )}
             {widgets.map((widget) => (
               <button
-                className={`studio-widget ${widget.id === activeWidget?.id ? "active" : ""}`}
+                className={`studio-widget ${widget.id === activeWidget?.id ? "active" : ""} ${isSelected("widget", widget.id, widget.id) ? "selected" : ""}`}
                 key={widget.id}
                 type="button"
                 style={{
@@ -1478,7 +1741,7 @@ function WidgetStudio({ onExit }) {
               >
                 {(widget.frames || []).map((frame) => (
                   <span
-                    className={`studio-image-frame ${selectedLayer.type === "frame" && selectedLayer.id === frame.id ? "selected" : ""} ${cropFrameId === frame.id ? "is-cropping" : ""}`}
+                    className={`studio-image-frame ${selectedLayer.type === "frame" && selectedLayer.id === frame.id ? "selected" : ""} ${isSelected("frame", widget.id, frame.id) ? "selected-group" : ""} ${cropFrameId === frame.id ? "is-cropping" : ""}`}
                     key={frame.id}
                     style={{
                       left: frame.x,
@@ -1505,7 +1768,7 @@ function WidgetStudio({ onExit }) {
                 ))}
                 {(widget.textBlocks || []).map((block) => (
                   <span
-                    className={`studio-text-layer studio-text-layer--${block.role || "body"} ${selectedLayer.type === "text" && selectedLayer.id === block.id ? "selected" : ""}`}
+                    className={`studio-text-layer studio-text-layer--${block.role || "body"} ${selectedLayer.type === "text" && selectedLayer.id === block.id ? "selected" : ""} ${isSelected("text", widget.id, block.id) ? "selected-group" : ""}`}
                     key={block.id}
                     style={{
                       left: block.x,
@@ -1524,7 +1787,7 @@ function WidgetStudio({ onExit }) {
                 ))}
                 {(widget.icons || []).map((icon) => (
                   <span
-                    className={`studio-editable-icon ${selectedLayer.type === "icon" && selectedLayer.id === icon.id ? "selected" : ""}`}
+                    className={`studio-editable-icon ${selectedLayer.type === "icon" && selectedLayer.id === icon.id ? "selected" : ""} ${isSelected("icon", widget.id, icon.id) ? "selected-group" : ""}`}
                     key={icon.id}
                     style={{
                       left: icon.x,
