@@ -694,6 +694,10 @@ function normalizeOsWidget(widget) {
     imageX: 50,
     imageY: 50,
     imageScrim: 0.18,
+    actionPlateSize: 22,
+    actionIconSize: 15,
+    actionPlateColor: "#ffffff",
+    actionIconColor: "#24262b",
     ...widget,
   };
   normalized.frames = defaultFramesForWidget(normalized).map((frame) => ({
@@ -1813,7 +1817,27 @@ function WidgetStudio({ onExit }) {
                 ))}
                 <span className="studio-widget-head">
                   <strong>{widget.type === "bio" ? "Резюме" : widget.type === "contacts" ? "" : ""}</strong>
-                  {widget.type !== "about" && <img src="os-portfolio/assets/icons/Caret_Right_SM.svg" alt="" />}
+                  {widget.type !== "about" && (
+                    <span
+                      className="studio-widget-action-preview"
+                      style={{
+                        width: widget.actionPlateSize || 22,
+                        height: widget.actionPlateSize || 22,
+                        backgroundColor: `${widget.actionPlateColor || "#ffffff"}5c`,
+                      }}
+                      aria-hidden="true"
+                    >
+                      <span
+                        style={{
+                          width: widget.actionIconSize || 15,
+                          height: widget.actionIconSize || 15,
+                          backgroundColor: widget.actionIconColor || "#24262b",
+                          WebkitMask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
+                          mask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
+                        }}
+                      />
+                    </span>
+                  )}
                 </span>
                 <span className="studio-resize-handle studio-widget-resize" onPointerDown={(event) => startResize(event, widget)}>↘</span>
               </button>
@@ -2375,6 +2399,48 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           <option value="680">Bold</option>
         </select>
       </label>
+      </details>
+      <details open className="studio-frame-tools studio-accordion">
+        <summary>Кнопка раскрытия</summary>
+        <div className="studio-section-head">
+          <div>
+            <p>Системная иконка</p>
+            <h3>Стрелка открытия</h3>
+          </div>
+          <div
+            className="studio-action-preview"
+            style={{
+              width: widget.actionPlateSize || 22,
+              height: widget.actionPlateSize || 22,
+              backgroundColor: `${widget.actionPlateColor || "#ffffff"}5c`,
+            }}
+            aria-hidden="true"
+          >
+            <span
+              style={{
+                width: widget.actionIconSize || 15,
+                height: widget.actionIconSize || 15,
+                backgroundColor: widget.actionIconColor || "#24262b",
+                WebkitMask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
+                mask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
+              }}
+            />
+          </div>
+        </div>
+        <div className="studio-grid-fields">
+          {number("actionPlateSize", "Размер кружка", 12, 64)}
+          {number("actionIconSize", "Размер SVG", 8, 48)}
+        </div>
+        <div className="studio-grid-fields">
+          <label className="studio-field">
+            <span>Цвет кружка</span>
+            <input type="color" value={widget.actionPlateColor || "#ffffff"} onChange={(event) => update({ actionPlateColor: event.target.value })} />
+          </label>
+          <label className="studio-field">
+            <span>Цвет SVG</span>
+            <input type="color" value={widget.actionIconColor || "#24262b"} onChange={(event) => update({ actionIconColor: event.target.value })} />
+          </label>
+        </div>
       </details>
       <details open className="studio-frame-tools studio-accordion">
         <summary>Текст</summary>
