@@ -308,6 +308,7 @@ const defaultOsChrome = {
     locationEn: "Moscow",
     textColor: "#24262b",
     fontSize: 23,
+    fontWeight: 420,
     showLanguage: true,
     showSearch: true,
     searchPlaceholder: "Найти проект или раздел",
@@ -323,6 +324,8 @@ const defaultOsChrome = {
       "os-portfolio/assets/icons/Mail.svg",
     ],
     textColor: "#24262b",
+    fontSize: 13,
+    fontWeight: 720,
     backgroundOpacity: 0.46,
     bottom: 30,
   },
@@ -694,17 +697,21 @@ function normalizeOsWidget(widget) {
     imageX: 50,
     imageY: 50,
     imageScrim: 0.18,
-    actionPlateSize: 22,
-    actionIconSize: 15,
+    actionPlateSize: Math.max(widget.actionPlateSize ?? 40, 36),
+    actionIconSize: Math.max(widget.actionIconSize ?? 28, 22),
     actionPlateColor: "#ffffff",
     actionIconColor: "#24262b",
+    locked: false,
     ...widget,
   };
   normalized.frames = defaultFramesForWidget(normalized).map((frame) => ({
     imageScale: 100,
+    locked: false,
     ...frame,
   }));
-  normalized.textBlocks = defaultTextBlocksForWidget(normalized);
+  normalized.textBlocks = defaultTextBlocksForWidget(normalized).map((block) => ({ locked: false, ...block }));
+  normalized.actionPlateSize = Math.max(normalized.actionPlateSize ?? 40, 36);
+  normalized.actionIconSize = Math.max(normalized.actionIconSize ?? 28, 22);
   const hasCaseBlocks = Array.isArray(normalized.expandedBlocks) && normalized.expandedBlocks.some((block) => String(block.type || "").startsWith("case-"));
   const hasLegacyCaseMap = Array.isArray(normalized.expandedBlocks) && normalized.expandedBlocks.some((block) => block.type === "case-map");
   if (normalized.type === "project-category" && (!hasCaseBlocks || hasLegacyCaseMap)) {
@@ -716,6 +723,7 @@ function normalizeOsWidget(widget) {
     iconSize: Math.round((icon.size || 64) * 0.44),
     plateColor: "#d4dae4",
     iconColor: icon.color || "#ffffff",
+    locked: false,
     ...icon,
   }));
   return normalized;
@@ -1163,7 +1171,7 @@ function WidgetStudio({ onExit }) {
 
   const readEditableText = (element) => {
     const clone = element.cloneNode(true);
-    clone.querySelectorAll(".studio-resize-handle").forEach((node) => node.remove());
+    clone.querySelectorAll(".studio-resize-handle, .studio-move-handle").forEach((node) => node.remove());
     return clone.textContent || "";
   };
 
@@ -1263,6 +1271,10 @@ function WidgetStudio({ onExit }) {
   const startDrag = (event, widget) => {
     event.preventDefault();
     selectLayer(widget, "widget", widget.id, event.shiftKey);
+    if (widget.locked) {
+      setNotice("Виджет заблокирован");
+      return;
+    }
     setCropFrameId(null);
     remember();
     const selectedTargets = isSelected("widget", widget.id, widget.id)
@@ -1289,6 +1301,10 @@ function WidgetStudio({ onExit }) {
     event.preventDefault();
     event.stopPropagation();
     selectLayer(widget, layerType, layer.id, event.shiftKey);
+    if (layer.locked || widget.locked) {
+      setNotice("Слой заблокирован");
+      return;
+    }
     remember();
     const selectedTargets = isSelected(layerType, widget.id, layer.id)
       ? getSelectedTargets().filter(({ item }) => item.type !== "widget")
@@ -1316,6 +1332,10 @@ function WidgetStudio({ onExit }) {
     event.preventDefault();
     event.stopPropagation();
     selectLayer(widget, layerType, layer.id);
+    if (layer.locked || widget.locked) {
+      setNotice("Слой заблокирован");
+      return;
+    }
     remember();
     dragState.current = {
       kind: "resize",
@@ -1332,6 +1352,11 @@ function WidgetStudio({ onExit }) {
   };
 
   const startFrameImageDrag = (event, widget, frame) => {
+    if (frame.locked || widget.locked) {
+      selectLayer(widget, "frame", frame.id);
+      setNotice("Фрейм заблокирован");
+      return;
+    }
     if (cropFrameId !== frame.id || !frame.image) return startLayerDrag(event, widget, "frame", frame);
     event.preventDefault();
     event.stopPropagation();
@@ -1630,6 +1655,7 @@ function WidgetStudio({ onExit }) {
             <button className={activePanel === "widgets" ? "active" : ""} type="button" onClick={() => setActivePanel("widgets")}>Виджеты</button>
             <button className={activePanel === "header" ? "active" : ""} type="button" onClick={() => setActivePanel("header")}>Хедер</button>
             <button className={activePanel === "footer" ? "active" : ""} type="button" onClick={() => setActivePanel("footer")}>Футер</button>
+            <button className={activePanel === "pages" ? "active" : ""} type="button" onClick={() => setActivePanel("pages")}>Страницы</button>
           </div>
         </details>
         <details className="studio-left-accordion">
@@ -1750,7 +1776,7 @@ function WidgetStudio({ onExit }) {
             </div>
             {chrome.header.visible && (
               <div className="studio-os-header" style={{ color: chrome.header.textColor }}>
-                <span style={{ fontSize: chrome.header.fontSize }}>{moscowPreviewTime} | {chrome.header.location}</span>
+                <span style={{ fontSize: chrome.header.fontSize, fontWeight: chrome.header.fontWeight || 420 }}>{moscowPreviewTime} | {chrome.header.location}</span>
                 {chrome.header.showLanguage && (
                   <span className="studio-os-language" aria-hidden="true">
                     <span>EN</span>
@@ -1764,7 +1790,7 @@ function WidgetStudio({ onExit }) {
             )}
             {widgets.map((widget) => (
               <button
-                className={`studio-widget ${widget.id === activeWidget?.id ? "active" : ""} ${isSelected("widget", widget.id, widget.id) ? "selected" : ""}`}
+                className={`studio-widget ${widget.id === activeWidget?.id ? "active" : ""} ${isSelected("widget", widget.id, widget.id) ? "selected" : ""} ${widget.locked ? "is-locked" : ""}`}
                 key={widget.id}
                 type="button"
                 style={{
@@ -1783,7 +1809,7 @@ function WidgetStudio({ onExit }) {
               >
                 {(widget.frames || []).map((frame) => (
                   <span
-                    className={`studio-image-frame ${selectedLayer.type === "frame" && selectedLayer.id === frame.id ? "selected" : ""} ${isSelected("frame", widget.id, frame.id) ? "selected-group" : ""} ${cropFrameId === frame.id ? "is-cropping" : ""}`}
+                    className={`studio-image-frame ${selectedLayer.type === "frame" && selectedLayer.id === frame.id ? "selected" : ""} ${isSelected("frame", widget.id, frame.id) ? "selected-group" : ""} ${cropFrameId === frame.id ? "is-cropping" : ""} ${frame.locked || widget.locked ? "is-locked" : ""}`}
                     key={frame.id}
                     style={{
                       left: frame.x,
@@ -1810,8 +1836,8 @@ function WidgetStudio({ onExit }) {
                 ))}
                 {(widget.textBlocks || []).map((block) => (
                   <span
-                    className={`studio-text-layer studio-text-layer--${block.role || "body"} ${selectedLayer.type === "text" && selectedLayer.id === block.id ? "selected" : ""} ${isSelected("text", widget.id, block.id) ? "selected-group" : ""}`}
-                    contentEditable
+                    className={`studio-text-layer studio-text-layer--${block.role || "body"} ${selectedLayer.type === "text" && selectedLayer.id === block.id ? "selected" : ""} ${isSelected("text", widget.id, block.id) ? "selected-group" : ""} ${block.locked || widget.locked ? "is-locked" : ""}`}
+                    contentEditable={!block.locked && !widget.locked}
                     key={block.id}
                     suppressContentEditableWarning
                     style={{
@@ -1824,19 +1850,20 @@ function WidgetStudio({ onExit }) {
                       color: block.color || widget.textColor || "#232428",
                     }}
                     onBlur={(event) => updateTextLayerText(widget.id, block.id, readEditableText(event.currentTarget))}
-                    onInput={() => setNotice("Текст редактируется прямо на макете")}
+                    onFocus={() => setNotice("Текст редактируется прямо на макете")}
                     onPointerDown={(event) => {
                       event.stopPropagation();
                       selectLayer(widget, "text", block.id, event.shiftKey);
                     }}
                   >
                     {block.text}
+                    <span className="studio-move-handle" contentEditable={false} onPointerDown={(event) => startLayerDrag(event, widget, "text", block)}>↕</span>
                     <span className="studio-resize-handle" contentEditable={false} onPointerDown={(event) => startResize(event, widget, "text", block)}>↘</span>
                   </span>
                 ))}
                 {(widget.icons || []).map((icon) => (
                   <span
-                    className={`studio-editable-icon ${selectedLayer.type === "icon" && selectedLayer.id === icon.id ? "selected" : ""} ${isSelected("icon", widget.id, icon.id) ? "selected-group" : ""}`}
+                    className={`studio-editable-icon ${selectedLayer.type === "icon" && selectedLayer.id === icon.id ? "selected" : ""} ${isSelected("icon", widget.id, icon.id) ? "selected-group" : ""} ${icon.locked || widget.locked ? "is-locked" : ""}`}
                     key={icon.id}
                     style={{
                       left: icon.x,
@@ -1866,16 +1893,16 @@ function WidgetStudio({ onExit }) {
                     <span
                       className="studio-widget-action-preview"
                       style={{
-                        width: widget.actionPlateSize || 22,
-                        height: widget.actionPlateSize || 22,
+                        width: widget.actionPlateSize || 40,
+                        height: widget.actionPlateSize || 40,
                         backgroundColor: `${widget.actionPlateColor || "#ffffff"}5c`,
                       }}
                       aria-hidden="true"
                     >
                       <span
                         style={{
-                          width: widget.actionIconSize || 15,
-                          height: widget.actionIconSize || 15,
+                          width: widget.actionIconSize || 28,
+                          height: widget.actionIconSize || 28,
                           backgroundColor: widget.actionIconColor || "#24262b",
                           WebkitMask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
                           mask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
@@ -1894,6 +1921,8 @@ function WidgetStudio({ onExit }) {
                   "--dock-opacity": chrome.footer.backgroundOpacity,
                   bottom: chrome.footer.bottom,
                   color: chrome.footer.textColor,
+                  fontSize: chrome.footer.fontSize,
+                  fontWeight: chrome.footer.fontWeight,
                 }}
               >
                 {chrome.footer.labels.map((label, index) => (
@@ -1923,6 +1952,17 @@ function WidgetStudio({ onExit }) {
             chrome={chrome}
             section="footer"
             updateChrome={updateChrome}
+          />
+        ) : activePanel === "pages" ? (
+          <PagesControls
+            widgets={widgets}
+            activeId={activeId}
+            setActiveId={setActiveId}
+            setActivePanel={setActivePanel}
+            setSelectedLayer={setSelectedLayer}
+            setSelectedItems={setSelectedItems}
+            addWidget={addWidget}
+            removeWidget={removeWidget}
           />
         ) : activeWidget ? (
           <WidgetControls
@@ -2054,6 +2094,15 @@ function ChromeControls({ chrome, section, updateChrome }) {
                 />
               </label>
               <label className="studio-field">
+                <span>Начертание</span>
+                <select value={settings.fontWeight || 420} onChange={(event) => updateChrome("header", { fontWeight: Number(event.target.value) })}>
+                  <option value="420">Regular</option>
+                  <option value="520">Medium</option>
+                  <option value="600">Semibold</option>
+                  <option value="680">Bold</option>
+                </select>
+              </label>
+              <label className="studio-field">
                 <span>Цвет текста</span>
                 <input
                   type="color"
@@ -2092,6 +2141,25 @@ function ChromeControls({ chrome, section, updateChrome }) {
               </div>
             ))}
             <div className="studio-grid-fields">
+              <label className="studio-field">
+                <span>Кегль кнопок</span>
+                <input
+                  max="24"
+                  min="10"
+                  type="number"
+                  value={settings.fontSize || 13}
+                  onChange={(event) => updateChrome("footer", { fontSize: Number(event.target.value) })}
+                />
+              </label>
+              <label className="studio-field">
+                <span>Начертание</span>
+                <select value={settings.fontWeight || 720} onChange={(event) => updateChrome("footer", { fontWeight: Number(event.target.value) })}>
+                  <option value="420">Regular</option>
+                  <option value="520">Medium</option>
+                  <option value="600">Semibold</option>
+                  <option value="720">Bold</option>
+                </select>
+              </label>
               <label className="studio-field">
                 <span>Отступ снизу</span>
                 <input
@@ -2144,6 +2212,51 @@ function ChromeControls({ chrome, section, updateChrome }) {
           />
           Живой блик под курсором
         </label>
+      </details>
+    </div>
+  );
+}
+
+function PagesControls({ widgets, activeId, setActiveId, setActivePanel, setSelectedLayer, setSelectedItems, addWidget, removeWidget }) {
+  const pageWidgets = widgets.filter((widget) => widget.type !== "contacts");
+  const activePage = widgets.find((widget) => widget.id === activeId);
+  const selectPage = (widget) => {
+    setActiveId(widget.id);
+    setSelectedLayer({ type: "widget", id: widget.id });
+    setSelectedItems([{ type: "widget", widgetId: widget.id, id: widget.id }]);
+  };
+
+  return (
+    <div className="studio-controls">
+      <div>
+        <p>Страницы и переходы</p>
+        <h2>Раскрытые виджеты</h2>
+      </div>
+      <details className="studio-frame-tools studio-accordion">
+        <summary>Список страниц</summary>
+        <p className="studio-empty-note">Страница создаётся из виджета: посетитель нажимает плашку, и открывается большой виджет.</p>
+        <div className="studio-frame-list studio-frame-list--stack">
+          {pageWidgets.map((widget) => (
+            <button className={widget.id === activeId ? "active" : ""} key={widget.id} type="button" onClick={() => selectPage(widget)}>
+              {widget.title.replaceAll("\n", " ")}
+            </button>
+          ))}
+        </div>
+      </details>
+      <details className="studio-frame-tools studio-accordion">
+        <summary>Действия</summary>
+        <button className="studio-muted-button" type="button" onClick={() => addWidget("project-category")}>Создать страницу проекта</button>
+        <button className="studio-muted-button" type="button" onClick={() => addWidget("bio")}>Создать страницу резюме</button>
+        {activePage && (
+          <>
+            <button className="studio-muted-button" type="button" onClick={() => setActivePanel("widgets")}>Редактировать выбранную</button>
+            <button className="studio-muted-button" type="button" onClick={() => removeWidget(activePage.id)}>Удалить выбранную</button>
+          </>
+        )}
+      </details>
+      <details className="studio-frame-tools studio-accordion">
+        <summary>Как настроить переход</summary>
+        <p className="studio-empty-note">Выбери страницу в списке, нажми “Редактировать выбранную”, затем открой секцию “Большой виджет”. Там настраиваются блоки, автолейаут, изображения и текст раскрытой страницы.</p>
       </details>
     </div>
   );
@@ -2346,6 +2459,9 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
     reader.readAsDataURL(file);
   };
 
+  const lockLabel = (locked) => (locked ? "Замок закрыт" : "Замок открыт");
+  const lockClassName = (locked) => `studio-lock-button ${locked ? "is-locked" : "is-unlocked"}`;
+
   const expandedLayout = {
     direction: "column",
     align: "center",
@@ -2416,6 +2532,9 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
       </div>
       <details className="studio-frame-tools studio-accordion">
         <summary>Виджет</summary>
+      <button className={lockClassName(widget.locked)} type="button" onClick={() => update({ locked: !widget.locked })}>
+        {lockLabel(widget.locked)}
+      </button>
       <label className="studio-field">
         <span>Тип</span>
         <select value={widget.type} onChange={(event) => update({ type: event.target.value })}>
@@ -2455,16 +2574,16 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           <div
             className="studio-action-preview"
             style={{
-              width: widget.actionPlateSize || 22,
-              height: widget.actionPlateSize || 22,
+              width: widget.actionPlateSize || 40,
+              height: widget.actionPlateSize || 40,
               backgroundColor: `${widget.actionPlateColor || "#ffffff"}5c`,
             }}
             aria-hidden="true"
           >
             <span
               style={{
-                width: widget.actionIconSize || 15,
-                height: widget.actionIconSize || 15,
+                width: widget.actionIconSize || 28,
+                height: widget.actionIconSize || 28,
                 backgroundColor: widget.actionIconColor || "#24262b",
                 WebkitMask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
                 mask: `url("os-portfolio/assets/icons/Caret_Right_SM.svg") center / contain no-repeat`,
@@ -2505,6 +2624,9 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         </div>
         {activeText ? (
           <>
+            <button className={lockClassName(activeText.locked)} type="button" onClick={() => updateTextBlock(activeText.id, { locked: !activeText.locked })}>
+              {lockLabel(activeText.locked)}
+            </button>
             <p className="studio-empty-note">Текст редактируется прямо на макете: нажми на слой и печатай внутри него.</p>
             <div className="studio-grid-fields">
               {textNumber("x", "Text X", 0, widget.w)}
@@ -2593,6 +2715,9 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         )}
         {activeIcon ? (
           <>
+            <button className={lockClassName(activeIcon.locked)} type="button" onClick={() => updateIcon(activeIcon.id, { locked: !activeIcon.locked })}>
+              {lockLabel(activeIcon.locked)}
+            </button>
             <div
               className="studio-icon-preview"
               style={{
@@ -2654,6 +2779,9 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         )}
         {activeFrame ? (
           <>
+            <button className={lockClassName(activeFrame.locked)} type="button" onClick={() => updateFrame(activeFrame.id, { locked: !activeFrame.locked })}>
+              {lockLabel(activeFrame.locked)}
+            </button>
             <div className="studio-grid-fields">
               {frameNumber("x", "Frame X", 0, widget.w)}
               {frameNumber("y", "Frame Y", 0, widget.h)}
