@@ -2611,11 +2611,10 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         <div className="studio-section-head">
           <div>
             <p>Текстовые слои</p>
-            <h3>Заголовки и тексты отдельно</h3>
           </div>
           <button type="button" onClick={() => addTextBlock("body")}>Добавить</button>
         </div>
-        <div className="studio-frame-list">
+        <div className="studio-frame-list studio-frame-list--quiet" aria-label="Текстовые слои">
           {textBlocks.map((block, index) => (
             <button className={block.id === activeText?.id ? "active" : ""} key={block.id} type="button" onClick={() => { setActiveTextId(block.id); setSelectedLayer({ type: "text", id: block.id }); }}>
               {block.role === "title" ? "Заголовок" : "Текст"} {index + 1}
@@ -2627,7 +2626,6 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
             <button className={lockClassName(activeText.locked)} type="button" onClick={() => updateTextBlock(activeText.id, { locked: !activeText.locked })}>
               {lockLabel(activeText.locked)}
             </button>
-            <p className="studio-empty-note">Текст редактируется прямо на макете: нажми на слой и печатай внутри него.</p>
             <div className="studio-grid-fields">
               {textNumber("x", "Text X", 0, widget.w)}
               {textNumber("y", "Text Y", 0, widget.h)}
@@ -2652,10 +2650,6 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
               <span>Цвет слоя</span>
               <input type="color" value={activeText.color || widget.textColor || "#232428"} onChange={(event) => updateTextBlock(activeText.id, { color: event.target.value })} />
             </label>
-            <div className="studio-frame-actions">
-              <button type="button" onClick={() => addTextBlock("title")}>Добавить заголовок</button>
-              <button type="button" onClick={() => removeTextBlock(activeText.id)}>Удалить слой</button>
-            </div>
           </>
         ) : (
           <p className="studio-empty-note">Добавь текстовый слой, чтобы управлять текстом отдельно.</p>
