@@ -998,6 +998,7 @@ function WidgetStudio({ onExit }) {
   const [chrome, setChrome] = useState(readOsChrome);
   const [activeId, setActiveId] = useState(() => widgets[0]?.id || null);
   const [activePanel, setActivePanel] = useState("widgets");
+  const [editingPageId, setEditingPageId] = useState(null);
   const [selectedLayer, setSelectedLayer] = useState(() => ({ type: "widget", id: widgets[0]?.id || null }));
   const [selectedItems, setSelectedItems] = useState(() => widgets[0] ? [{ type: "widget", widgetId: widgets[0].id, id: widgets[0].id }] : []);
   const [spacingGap, setSpacingGap] = useState(20);
@@ -1020,6 +1021,7 @@ function WidgetStudio({ onExit }) {
   const canvasViewportRef = useRef(null);
   const [stageScale, setStageScale] = useState(1);
   const activeWidget = widgets.find((widget) => widget.id === activeId) || widgets[0];
+  const isPageMode = Boolean(editingPageId);
 
   const selectionKey = (item) => `${item.type}:${item.widgetId}:${item.id}`;
 
@@ -1197,6 +1199,23 @@ function WidgetStudio({ onExit }) {
     localStorage.setItem(osChromeStorageKey, JSON.stringify(chrome));
     localStorage.removeItem(osUserLayoutStorageKey);
     setNotice("Настройки сохранены");
+  };
+
+  const openPageEditor = (widgetId = activeId) => {
+    const widget = widgets.find((item) => item.id === widgetId) || activeWidget;
+    if (!widget) return;
+    setEditingPageId(widget.id);
+    setActiveId(widget.id);
+    setActivePanel("widgets");
+    setSelectedLayer({ type: "page", id: widget.id });
+    setSelectedItems([{ type: "widget", widgetId: widget.id, id: widget.id }]);
+    setNotice("Редактируется раскрытая страница виджета");
+  };
+
+  const closePageEditor = () => {
+    setEditingPageId(null);
+    setSelectedLayer({ type: "widget", id: activeWidget?.id || null });
+    setNotice("Редактируется рабочий стол");
   };
 
   const updateChrome = (section, patch) => {
@@ -1728,6 +1747,8 @@ function WidgetStudio({ onExit }) {
         <header className="studio-topline">
           <p>{notice}</p>
           <div>
+            {isPageMode && <button type="button" onClick={closePageEditor}>Рабочий стол</button>}
+            {!isPageMode && activeWidget?.type !== "contacts" && <button type="button" onClick={() => openPageEditor(activeWidget.id)}>Страница</button>}
             <button type="button" onClick={undoLast}>Отменить</button>
             <button type="button" onClick={saveWidgets}>Сохранить</button>
             <button type="button" onClick={duplicateWidget}>Дублировать</button>
@@ -1748,6 +1769,14 @@ function WidgetStudio({ onExit }) {
             onPointerUp={stopDrag}
             onPointerCancel={stopDrag}
           >
+            {isPageMode ? (
+              <StudioExpandedPagePreview
+                chrome={chrome}
+                widget={activeWidget}
+                moscowPreviewTime={moscowPreviewTime}
+              />
+            ) : (
+              <>
             <div className="studio-guides-layer" aria-hidden="true">
               {osGuides.vertical.map((position, index) => (
                 <span
@@ -1936,6 +1965,8 @@ function WidgetStudio({ onExit }) {
                 ))}
               </div>
             )}
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -1961,11 +1992,13 @@ function WidgetStudio({ onExit }) {
             setActivePanel={setActivePanel}
             setSelectedLayer={setSelectedLayer}
             setSelectedItems={setSelectedItems}
+            openPageEditor={openPageEditor}
             addWidget={addWidget}
             removeWidget={removeWidget}
           />
         ) : activeWidget ? (
           <WidgetControls
+            mode={isPageMode ? "page" : "desktop"}
             widget={activeWidget}
             selectedLayer={selectedLayer}
             setSelectedLayer={setSelectedLayer}
@@ -2217,7 +2250,135 @@ function ChromeControls({ chrome, section, updateChrome }) {
   );
 }
 
-function PagesControls({ widgets, activeId, setActiveId, setActivePanel, setSelectedLayer, setSelectedItems, addWidget, removeWidget }) {
+function StudioExpandedPagePreview({ chrome, widget, moscowPreviewTime }) {
+  const layout = {
+    direction: "column",
+    align: "center",
+    gap: 18,
+    ...(widget?.expandedLayout || {}),
+  };
+  const blocks = widget?.expandedBlocks || [];
+  const justify = layout.align === "start" ? "flex-start" : layout.align === "end" ? "flex-end" : "center";
+  const title = (widget?.title || "Проект").replaceAll("\n", " ");
+  const body = widget?.text || "";
+
+  const renderBlock = (block) => {
+    if (block.type === "image") {
+      return (
+        <figure
+          className="studio-expanded-image"
+          key={block.id}
+          style={{
+            width: block.w || 360,
+            height: block.h || 220,
+            borderRadius: block.radius || 28,
+            backgroundImage: block.image ? `url(${block.image})` : undefined,
+          }}
+        />
+      );
+    }
+    if (block.type === "case-media-grid") {
+      return (
+        <section className="studio-expanded-section" key={block.id}>
+          <span>{block.label || "Артефакты"}</span>
+          <h3>{block.title || "Визуальные материалы"}</h3>
+          <div className="studio-expanded-media-grid">
+            {mediaItems(block.items || []).map((item, index) => (
+              <figure key={`${block.id}-${index}`} style={{ backgroundImage: item.image ? `url(${item.image})` : undefined }}>
+                <figcaption>{item.title || `Артефакт ${index + 1}`}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      );
+    }
+    if (block.type === "case-process") {
+      return (
+        <section className="studio-expanded-section" key={block.id}>
+          <span>{block.label || "Процесс"}</span>
+          <h3>{block.title || "Процесс"}</h3>
+          <ol className="studio-expanded-steps">
+            {(block.steps || []).map((step, index) => <li key={`${block.id}-${index}`}>{step}</li>)}
+          </ol>
+        </section>
+      );
+    }
+    if (block.type === "case-result") {
+      return (
+        <section className="studio-expanded-section" key={block.id}>
+          <span>{block.label || "Результат"}</span>
+          <h3>{block.title || "Результат"}</h3>
+          <div className="studio-expanded-results">
+            {(block.items || []).map((item, index) => (
+              <div key={`${block.id}-${index}`}>
+                <strong>{item[0]}</strong>
+                <p>{item[1]}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+    if (block.type === "case-section" || block.type === "case-hero") {
+      return (
+        <section className="studio-expanded-section" key={block.id}>
+          <span>{block.label || "Секция"}</span>
+          <h3>{block.title || block.text || "Заголовок"}</h3>
+          <p>{block.summary || block.text || ""}</p>
+        </section>
+      );
+    }
+    return (
+      <section className={`studio-expanded-copy studio-expanded-copy--${block.type || "text"}`} key={block.id} style={{ textAlign: block.align || "center", fontWeight: block.fontWeight || 520 }}>
+        {block.text || "Новый текстовый блок"}
+      </section>
+    );
+  };
+
+  return (
+    <div className="studio-expanded-page">
+      {chrome.header.visible && (
+        <div className="studio-os-header" style={{ color: chrome.header.textColor }}>
+          <span style={{ fontSize: chrome.header.fontSize, fontWeight: chrome.header.fontWeight || 420 }}>{moscowPreviewTime} | {chrome.header.location}</span>
+          {chrome.header.showLanguage && (
+            <span className="studio-os-language" aria-hidden="true">
+              <span>EN</span>
+              <b>RU</b>
+            </span>
+          )}
+          {chrome.header.showSearch && <span className="studio-os-search" aria-hidden="true">⌕</span>}
+        </div>
+      )}
+      <article
+        className="studio-expanded-card"
+        style={{
+          borderRadius: widget?.radius ? Math.max(34, widget.radius + 18) : 46,
+          color: widget?.textColor || "#232428",
+          background: `rgba(${hexToRgb(widget?.tintColor || "#f8faff")},${Math.min(0.76, (widget?.glassOpacity || 0.56) + 0.12)})`,
+        }}
+      >
+        <button className="studio-expanded-close" type="button" aria-label="Закрыть">×</button>
+        <header>
+          <span>{widget?.type === "project-category" ? "Проект" : "Страница"}</span>
+          <h2>{title}</h2>
+          {body && <p>{body}</p>}
+        </header>
+        <div
+          className="studio-expanded-content"
+          style={{
+            flexDirection: layout.direction === "row" ? "row" : "column",
+            alignItems: justify,
+            gap: layout.gap,
+          }}
+        >
+          {blocks.length ? blocks.map(renderBlock) : <p className="studio-expanded-placeholder">Добавь блоки справа, и они появятся на этой странице.</p>}
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function PagesControls({ widgets, activeId, setActiveId, setActivePanel, setSelectedLayer, setSelectedItems, openPageEditor, addWidget, removeWidget }) {
   const pageWidgets = widgets.filter((widget) => widget.type !== "contacts");
   const activePage = widgets.find((widget) => widget.id === activeId);
   const selectPage = (widget) => {
@@ -2249,20 +2410,21 @@ function PagesControls({ widgets, activeId, setActiveId, setActivePanel, setSele
         <button className="studio-muted-button" type="button" onClick={() => addWidget("bio")}>Создать страницу резюме</button>
         {activePage && (
           <>
-            <button className="studio-muted-button" type="button" onClick={() => setActivePanel("widgets")}>Редактировать выбранную</button>
+            <button className="studio-muted-button" type="button" onClick={() => openPageEditor(activePage.id)}>Открыть страницу</button>
+            <button className="studio-muted-button" type="button" onClick={() => setActivePanel("widgets")}>Настройки плашки</button>
             <button className="studio-muted-button" type="button" onClick={() => removeWidget(activePage.id)}>Удалить выбранную</button>
           </>
         )}
       </details>
       <details className="studio-frame-tools studio-accordion">
         <summary>Как настроить переход</summary>
-        <p className="studio-empty-note">Выбери страницу в списке, нажми “Редактировать выбранную”, затем открой секцию “Большой виджет”. Там настраиваются блоки, автолейаут, изображения и текст раскрытой страницы.</p>
+        <p className="studio-empty-note">Выбери страницу и нажми “Открыть страницу”. Холст переключится на раскрытый виджет, а справа останутся только настройки этой страницы.</p>
       </details>
     </div>
   );
 }
 
-function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, setCropFrameId, update, onImage }) {
+function WidgetControls({ mode = "desktop", widget, selectedLayer, setSelectedLayer, cropFrameId, setCropFrameId, update, onImage }) {
   const frames = widget.frames || [];
   const textBlocks = widget.textBlocks || [];
   const icons = widget.icons || [];
@@ -2459,8 +2621,9 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
     reader.readAsDataURL(file);
   };
 
-  const lockLabel = (locked) => (locked ? "Замок закрыт" : "Замок открыт");
   const lockClassName = (locked) => `studio-lock-button ${locked ? "is-locked" : "is-unlocked"}`;
+  const lockIcon = (locked) => locked ? "os-portfolio/assets/icons/Lock.svg" : "os-portfolio/assets/icons/Lock_Open.svg";
+  const lockTitle = (locked) => locked ? "Слой заблокирован" : "Слой разблокирован";
 
   const expandedLayout = {
     direction: "column",
@@ -2524,6 +2687,82 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
     reader.readAsDataURL(file);
   };
 
+  if (mode === "page") {
+    return (
+      <div className="studio-controls">
+        <div>
+          <p>Раскрытая страница</p>
+          <h2>{widget.title.replaceAll("\n", " ")}</h2>
+        </div>
+        <details className="studio-frame-tools studio-accordion" open>
+          <summary>Автолейаут</summary>
+          <div className="studio-align-row" aria-label="Автолейаут большого виджета">
+            <button className={expandedLayout.direction === "column" ? "active" : ""} type="button" onClick={() => updateExpandedLayout({ direction: "column" })}>Column</button>
+            <button className={expandedLayout.direction === "row" ? "active" : ""} type="button" onClick={() => updateExpandedLayout({ direction: "row" })}>Row</button>
+            <button className={expandedLayout.align === "start" ? "active" : ""} type="button" onClick={() => updateExpandedLayout({ align: "start" })}>Left</button>
+            <button className={expandedLayout.align === "center" ? "active" : ""} type="button" onClick={() => updateExpandedLayout({ align: "center" })}>Center</button>
+            <button className={expandedLayout.align === "end" ? "active" : ""} type="button" onClick={() => updateExpandedLayout({ align: "end" })}>Right</button>
+          </div>
+          <div className="studio-grid-fields">
+            <label className="studio-field">
+              <span>Gap</span>
+              <input type="number" min="0" max="80" value={expandedLayout.gap} onChange={(event) => updateExpandedLayout({ gap: Number(event.target.value) })} />
+            </label>
+            <label className="studio-field">
+              <span>Добавить блок</span>
+              <select defaultValue="" onChange={(event) => { if (event.target.value) addExpandedBlock(event.target.value); event.target.value = ""; }}>
+                <option value="" disabled>Выбрать</option>
+                <option value="heading">Заголовок</option>
+                <option value="text">Текст</option>
+                <option value="image">Картинка</option>
+                <option value="case-section">Секция кейса</option>
+                <option value="case-media-grid">Артефакты</option>
+                <option value="case-process">Процесс</option>
+                <option value="case-result">Результат</option>
+              </select>
+            </label>
+          </div>
+        </details>
+        <details className="studio-frame-tools studio-accordion" open>
+          <summary>Блоки страницы</summary>
+          {expandedBlocks.map((block, index) => (
+            <details className="studio-block-editor" key={block.id}>
+              <summary>Блок {index + 1}: {block.title || block.label || block.text || "Контент"}</summary>
+              <div className="studio-section-head">
+                <div aria-hidden="true" />
+                <button type="button" onClick={() => removeExpandedBlock(block.id)}>Удалить</button>
+              </div>
+              {block.type === "image" ? (
+                <>
+                  <label className="studio-field">
+                    <span>Фото блока</span>
+                    <input type="file" accept="image/*" onChange={(event) => handleExpandedImage(block.id, event.target.files?.[0])} />
+                  </label>
+                  <div className="studio-grid-fields">
+                    <label className="studio-field"><span>Ширина</span><input type="number" value={block.w || 240} onChange={(event) => updateExpandedBlock(block.id, { w: Number(event.target.value) })} /></label>
+                    <label className="studio-field"><span>Высота</span><input type="number" value={block.h || 160} onChange={(event) => updateExpandedBlock(block.id, { h: Number(event.target.value) })} /></label>
+                    <label className="studio-field"><span>Скругление</span><input type="number" value={block.radius || 24} onChange={(event) => updateExpandedBlock(block.id, { radius: Number(event.target.value) })} /></label>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="studio-grid-fields">
+                    <label className="studio-field"><span>Лейбл</span><input value={block.label || ""} onChange={(event) => updateExpandedBlock(block.id, { label: event.target.value })} /></label>
+                    <label className="studio-field"><span>Заголовок</span><input value={block.title || block.text || ""} onChange={(event) => updateExpandedBlock(block.id, block.type === "case-hero" || block.type === "heading" ? { text: event.target.value } : { title: event.target.value })} /></label>
+                  </div>
+                  <label className="studio-field">
+                    <span>Текст</span>
+                    <textarea value={block.summary || block.text || ""} onChange={(event) => updateExpandedBlock(block.id, block.type === "case-hero" ? { summary: event.target.value } : { text: event.target.value })} />
+                  </label>
+                </>
+              )}
+            </details>
+          ))}
+        </details>
+      </div>
+    );
+  }
+
   return (
     <div className="studio-controls">
       <div>
@@ -2532,8 +2771,8 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
       </div>
       <details className="studio-frame-tools studio-accordion">
         <summary>Виджет</summary>
-      <button className={lockClassName(widget.locked)} type="button" onClick={() => update({ locked: !widget.locked })}>
-        {lockLabel(widget.locked)}
+      <button aria-label={lockTitle(widget.locked)} className={lockClassName(widget.locked)} title={lockTitle(widget.locked)} type="button" onClick={() => update({ locked: !widget.locked })}>
+        <img alt="" src={lockIcon(widget.locked)} />
       </button>
       <label className="studio-field">
         <span>Тип</span>
@@ -2623,8 +2862,8 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         </div>
         {activeText ? (
           <>
-            <button className={lockClassName(activeText.locked)} type="button" onClick={() => updateTextBlock(activeText.id, { locked: !activeText.locked })}>
-              {lockLabel(activeText.locked)}
+            <button aria-label={lockTitle(activeText.locked)} className={lockClassName(activeText.locked)} title={lockTitle(activeText.locked)} type="button" onClick={() => updateTextBlock(activeText.id, { locked: !activeText.locked })}>
+              <img alt="" src={lockIcon(activeText.locked)} />
             </button>
             <div className="studio-grid-fields">
               {textNumber("x", "Text X", 0, widget.w)}
@@ -2709,8 +2948,8 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         )}
         {activeIcon ? (
           <>
-            <button className={lockClassName(activeIcon.locked)} type="button" onClick={() => updateIcon(activeIcon.id, { locked: !activeIcon.locked })}>
-              {lockLabel(activeIcon.locked)}
+            <button aria-label={lockTitle(activeIcon.locked)} className={lockClassName(activeIcon.locked)} title={lockTitle(activeIcon.locked)} type="button" onClick={() => updateIcon(activeIcon.id, { locked: !activeIcon.locked })}>
+              <img alt="" src={lockIcon(activeIcon.locked)} />
             </button>
             <div
               className="studio-icon-preview"
@@ -2751,10 +2990,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
       <details className="studio-frame-tools studio-accordion">
         <summary>Фреймы</summary>
         <div className="studio-section-head">
-          <div>
-            <p>Фреймы с картинками</p>
-            <h3>Слои внутри виджета</h3>
-          </div>
+          <div aria-hidden="true" />
           <button type="button" onClick={addFrame}>Добавить</button>
         </div>
         {frames.length > 0 && (
@@ -2773,8 +3009,8 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
         )}
         {activeFrame ? (
           <>
-            <button className={lockClassName(activeFrame.locked)} type="button" onClick={() => updateFrame(activeFrame.id, { locked: !activeFrame.locked })}>
-              {lockLabel(activeFrame.locked)}
+            <button aria-label={lockTitle(activeFrame.locked)} className={lockClassName(activeFrame.locked)} title={lockTitle(activeFrame.locked)} type="button" onClick={() => updateFrame(activeFrame.id, { locked: !activeFrame.locked })}>
+              <img alt="" src={lockIcon(activeFrame.locked)} />
             </button>
             <div className="studio-grid-fields">
               {frameNumber("x", "Frame X", 0, widget.w)}
@@ -2816,6 +3052,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           <p className="studio-empty-note">Добавь фрейм, чтобы вставить картинку внутрь виджета и обрезать её по форме.</p>
         )}
       </details>
+      {false && (
       <details className="studio-frame-tools studio-accordion">
         <summary>Большой виджет</summary>
         <div className="studio-section-head">
@@ -2973,6 +3210,7 @@ function WidgetControls({ widget, selectedLayer, setSelectedLayer, cropFrameId, 
           </details>
         ))}
       </details>
+      )}
     </div>
   );
 }
