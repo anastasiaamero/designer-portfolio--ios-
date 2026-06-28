@@ -1173,7 +1173,7 @@ function WidgetStudio({ onExit }) {
 
   const readEditableText = (element) => {
     const clone = element.cloneNode(true);
-    clone.querySelectorAll(".studio-resize-handle, .studio-move-handle").forEach((node) => node.remove());
+    clone.querySelectorAll(".studio-resize-handle").forEach((node) => node.remove());
     return clone.textContent || "";
   };
 
@@ -1565,60 +1565,113 @@ function WidgetStudio({ onExit }) {
 
   const applySelectionGap = (axis = "horizontal") => {
     const targets = getSelectedTargets()
-      .filter(({ item }) => item.type === "widget")
-      .sort((a, b) => axis === "horizontal" ? a.target.x - b.target.x : a.target.y - b.target.y);
+      .map(({ item, widget, target }) => {
+        const width = item.type === "widget" ? target.w : (target.w || target.plateSize || target.size || 24);
+        const height = item.type === "widget" ? target.h : (target.h || target.plateSize || target.size || Math.round((target.size || 16) * 1.3));
+        return {
+          item,
+          widget,
+          target,
+          width,
+          height,
+          absX: item.type === "widget" ? target.x : (widget.x || 0) + (target.x || 0),
+          absY: item.type === "widget" ? target.y : (widget.y || 0) + (target.y || 0),
+        };
+      })
+      .sort((a, b) => axis === "horizontal" ? a.absX - b.absX : a.absY - b.absY);
     if (targets.length < 2) {
-      setNotice("Выбери минимум два виджета через Shift-клик");
+      setNotice("Выбери минимум два объекта через Shift-клик");
       return;
     }
     remember();
     const positions = new Map();
-    let cursor = axis === "horizontal" ? targets[0].target.x : targets[0].target.y;
-    targets.forEach(({ target }, index) => {
+    let cursor = axis === "horizontal" ? targets[0].absX : targets[0].absY;
+    targets.forEach((entry, index) => {
       if (index > 0) {
-        const previous = targets[index - 1].target;
-        cursor += (axis === "horizontal" ? previous.w : previous.h) + Number(spacingGap || 0);
+        const previous = targets[index - 1];
+        cursor += (axis === "horizontal" ? previous.width : previous.height) + Number(spacingGap || 0);
       }
-      positions.set(target.id, Math.round(cursor));
+      positions.set(selectionKey(entry.item), Math.round(cursor));
     });
     setWidgets((current) => current.map((widgetItem) => {
-      if (!positions.has(widgetItem.id)) return widgetItem;
-      return axis === "horizontal"
-        ? { ...widgetItem, x: positions.get(widgetItem.id) }
-        : { ...widgetItem, y: positions.get(widgetItem.id) };
+      const widgetKey = selectionKey({ type: "widget", widgetId: widgetItem.id, id: widgetItem.id });
+      let nextWidget = positions.has(widgetKey)
+        ? axis === "horizontal"
+          ? { ...widgetItem, x: positions.get(widgetKey) }
+          : { ...widgetItem, y: positions.get(widgetKey) }
+        : widgetItem;
+      ["text", "frame", "icon"].forEach((type) => {
+        const field = type === "text" ? "textBlocks" : type === "frame" ? "frames" : "icons";
+        nextWidget = {
+          ...nextWidget,
+          [field]: (nextWidget[field] || []).map((layer) => {
+            const key = selectionKey({ type, widgetId: widgetItem.id, id: layer.id });
+            if (!positions.has(key)) return layer;
+            const nextAbs = positions.get(key);
+            return axis === "horizontal"
+              ? { ...layer, x: Math.round(nextAbs - (nextWidget.x || 0)) }
+              : { ...layer, y: Math.round(nextAbs - (nextWidget.y || 0)) };
+          }),
+        };
+      });
+      return nextWidget;
     }));
-    setNotice(`Расстояние между виджетами: ${spacingGap}px`);
+    setNotice(`Расстояние между объектами: ${spacingGap}px`);
   };
 
   const alignSelected = (mode) => {
-    const targets = getSelectedTargets();
+    const targets = getSelectedTargets().map(({ item, widget, target }) => {
+      const width = item.type === "widget" ? target.w : (target.w || target.plateSize || target.size || 24);
+      const height = item.type === "widget" ? target.h : (target.h || target.plateSize || target.size || Math.round((target.size || 16) * 1.3));
+      const absX = item.type === "widget" ? target.x : (widget.x || 0) + (target.x || 0);
+      const absY = item.type === "widget" ? target.y : (widget.y || 0) + (target.y || 0);
+      return { item, widget, target, width, height, absX, absY };
+    });
     if (targets.length < 2) {
       alignActiveWidget(mode);
       return;
     }
-    const widgetTargets = targets.filter(({ item }) => item.type === "widget");
-    if (widgetTargets.length < 2) {
-      setNotice("Групповое выравнивание сейчас работает для виджетов");
-      return;
-    }
     remember();
-    const left = Math.min(...widgetTargets.map(({ target }) => target.x));
-    const right = Math.max(...widgetTargets.map(({ target }) => target.x + target.w));
-    const top = Math.min(...widgetTargets.map(({ target }) => target.y));
-    const bottom = Math.max(...widgetTargets.map(({ target }) => target.y + target.h));
+    const left = Math.min(...targets.map(({ absX }) => absX));
+    const right = Math.max(...targets.map(({ absX, width }) => absX + width));
+    const top = Math.min(...targets.map(({ absY }) => absY));
+    const bottom = Math.max(...targets.map(({ absY, height }) => absY + height));
     const center = Math.round((left + right) / 2);
     const middle = Math.round((top + bottom) / 2);
+    const nextPosition = (entry) => {
+      if (mode === "left") return { x: left, y: entry.absY };
+      if (mode === "right") return { x: right - entry.width, y: entry.absY };
+      if (mode === "center") return { x: center - Math.round(entry.width / 2), y: entry.absY };
+      if (mode === "top") return { x: entry.absX, y: top };
+      if (mode === "bottom") return { x: entry.absX, y: bottom - entry.height };
+      if (mode === "middle") return { x: entry.absX, y: middle - Math.round(entry.height / 2) };
+      return { x: entry.absX, y: entry.absY };
+    };
+    const positions = new Map(targets.map((entry) => [selectionKey(entry.item), nextPosition(entry)]));
     setWidgets((current) => current.map((widgetItem) => {
-      if (!widgetTargets.some(({ target }) => target.id === widgetItem.id)) return widgetItem;
-      if (mode === "left") return { ...widgetItem, x: left };
-      if (mode === "right") return { ...widgetItem, x: right - widgetItem.w };
-      if (mode === "center") return { ...widgetItem, x: center - Math.round(widgetItem.w / 2) };
-      if (mode === "top") return { ...widgetItem, y: top };
-      if (mode === "bottom") return { ...widgetItem, y: bottom - widgetItem.h };
-      if (mode === "middle") return { ...widgetItem, y: middle - Math.round(widgetItem.h / 2) };
-      return widgetItem;
+      const widgetKey = selectionKey({ type: "widget", widgetId: widgetItem.id, id: widgetItem.id });
+      let nextWidget = positions.has(widgetKey)
+        ? { ...widgetItem, x: positions.get(widgetKey).x, y: positions.get(widgetKey).y }
+        : widgetItem;
+      ["text", "frame", "icon"].forEach((type) => {
+        const field = type === "text" ? "textBlocks" : type === "frame" ? "frames" : "icons";
+        nextWidget = {
+          ...nextWidget,
+          [field]: (nextWidget[field] || []).map((layer) => {
+            const key = selectionKey({ type, widgetId: widgetItem.id, id: layer.id });
+            if (!positions.has(key)) return layer;
+            const position = positions.get(key);
+            return {
+              ...layer,
+              x: Math.round(position.x - (nextWidget.x || 0)),
+              y: Math.round(position.y - (nextWidget.y || 0)),
+            };
+          }),
+        };
+      });
+      return nextWidget;
     }));
-    setNotice(`Выровнено: ${widgetTargets.length} виджета`);
+    setNotice(`Выровнено: ${targets.length} объект(а)`);
   };
 
   useEffect(() => {
@@ -1866,9 +1919,7 @@ function WidgetStudio({ onExit }) {
                 {(widget.textBlocks || []).map((block) => (
                   <span
                     className={`studio-text-layer studio-text-layer--${block.role || "body"} ${selectedLayer.type === "text" && selectedLayer.id === block.id ? "selected" : ""} ${isSelected("text", widget.id, block.id) ? "selected-group" : ""} ${block.locked || widget.locked ? "is-locked" : ""}`}
-                    contentEditable={!block.locked && !widget.locked}
                     key={block.id}
-                    suppressContentEditableWarning
                     style={{
                       left: block.x,
                       top: block.y,
@@ -1878,15 +1929,9 @@ function WidgetStudio({ onExit }) {
                       fontWeight: block.weight,
                       color: block.color || widget.textColor || "#232428",
                     }}
-                    onBlur={(event) => updateTextLayerText(widget.id, block.id, readEditableText(event.currentTarget))}
-                    onFocus={() => setNotice("Текст редактируется прямо на макете")}
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      selectLayer(widget, "text", block.id, event.shiftKey);
-                    }}
+                    onPointerDown={(event) => startLayerDrag(event, widget, "text", block)}
                   >
                     {block.text}
-                    <span className="studio-move-handle" contentEditable={false} onPointerDown={(event) => startLayerDrag(event, widget, "text", block)}>↕</span>
                     <span className="studio-resize-handle" contentEditable={false} onPointerDown={(event) => startResize(event, widget, "text", block)}>↘</span>
                   </span>
                 ))}
